@@ -1,0 +1,34 @@
+---
+title: "project preprocessing"
+author: "Takshsheel Goswami"
+date: "2024-04-23"
+output: pdf_document
+---
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r}
+library(tidyverse)
+salary_data = read.csv("salary_Proj.csv")
+nflverse_data = read.csv("nflverse.csv")
+
+names(salary_data)[1] <- "player_display_name"
+total <- merge(salary_data,nflverse_data,by="player_display_name")
+```
+
+```{r}
+#For each player, select all instances. Averaege all stats. Return avg. 
+total = subset(total, select = -c(player_name,player_id,X,Position,season_type,headshot_url,recent_team,season,season_type,opponent_team,week))
+
+library(dplyr)
+total <- total %>% 
+  group_by(player_display_name,position,position_group) %>%
+  summarise_all(mean)
+
+#Combine position back
+table(total$position_group)
+
+
+
+```

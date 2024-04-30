@@ -1,0 +1,71 @@
+---
+title: "project_hanyiw"
+output: pdf_document
+date: "2024-04-19"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(nflverse)
+library(tidyverse)
+library(broom)
+library(glmnet)
+
+
+player_stats <- nflreadr::load_player_stats()
+player_stats
+
+qb_stats <- player_stats %>%
+  filter(position == "QB") %>%
+  group_by(player_name) %>%
+  summarize(average_completion = mean(completions, na.rm = TRUE),
+            average_passing_yards = mean(passing_yards, na.rm = TRUE))
+
+
+# Scatter plot of average touchdowns vs. passing yards
+ggplot(qb_stats, aes(x = average_passing_yards, y = average_completion, label = player_name)) +
+  geom_point(aes(color = average_completion), size = 3) +
+  geom_text(check_overlap = TRUE, hjust = 1.5, vjust = 1) +
+  labs(title = "Average Passing Yards vs.Average Completion for QBs",
+       x = "Average Passing Yards",
+       y = "Average Completion") +
+  theme_minimal() +
+  scale_color_gradient(low = "blue", high = "red")
+
+
+```
+
+```{r}
+
+rb_stats <- player_stats %>%
+  filter(position == "RB") %>%
+  group_by(player_name) %>%
+  summarize(average_rushing_yards = mean(rushing_yards, na.rm = TRUE),
+            total_touchdowns = sum(rushing_tds, na.rm = TRUE))
+
+# Create a histogram of average rushing yards
+ggplot(rb_stats, aes(x = average_rushing_yards)) +
+  geom_histogram(bins = 30, fill = "cornflowerblue", color = "black") +
+  labs(title = "Distribution of Average Rushing Yards for Running Backs",
+       x = "Average Rushing Yards",
+       y = "Frequency") +
+  theme_minimal()
+
+
+```
+
+
+```{r}
+ggplot(rb_stats, aes(x = average_rushing_yards, y = total_touchdowns,label = player_name)) +
+  geom_point(aes(color = total_touchdowns), size = 4, alpha = 0.6) +  
+  geom_text(check_overlap = TRUE, hjust = 1.5, vjust = 1) +
+  scale_color_gradient(low = "blue", high = "red") +  
+  labs(title = "Relationship Between Average Rushing Yards and Total Touchdowns for Running Backs",
+       x = "Average Rushing Yards",
+       y = "Total Touchdowns") +
+  theme_minimal() 
+```

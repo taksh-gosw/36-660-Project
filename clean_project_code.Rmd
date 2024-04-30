@@ -1,0 +1,287 @@
+---
+title: "project preprocessing"
+author: "Takshsheel Goswami"
+date: "2024-04-23"
+output: pdf_document
+---
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r}
+library(tidyverse)
+salary_data = read.csv("salary_Proj.csv")
+nflverse_data = read.csv("nflverse.csv")
+
+names(salary_data)[1] <- "player_display_name"
+total <- merge(salary_data,nflverse_data,by="player_display_name")
+total$Base.Salary
+```
+
+```{r}
+#For each player, select all instances. Averaege all stats. Return avg. 
+total = subset(total, select = -c(player_name,player_id,X,Position,season_type,headshot_url,recent_team,season,season_type,opponent_team,week))
+
+library(dplyr)
+total <- total %>% 
+  group_by(player_display_name,position,position_group) %>%
+  summarise_all(mean)
+
+#Combine position back
+table(total$position_group)
+
+df_wr = subset(total, position_group == "WR")
+df_te = subset(total, position_group == "TE") 
+df_rb = subset(total, position_group == "RB")
+df_qb = subset(total, position_group == "QB") 
+
+df_wr = subset(df_wr, select = -c(position, position_group))
+df_te = subset(df_te, select = -c(position, position_group))
+df_hb = subset(df_rb, select = -c(position, position_group))
+df_qb = subset(df_qb, select = -c(position, position_group))
+
+#colnames(df_wr)
+#colnames(df_te)
+#colnames(df_rb)
+#colnames(df_qb)
+
+#
+#Now that data has been seperated into different dataframes, we can now do different demos. 
+
+#Between 7-7:30. Filter out what demos are going to be applicable and viable for the given scenario.
+#Basically a complex regression using demo.
+#Between 7-9, make a demo work. Your goal, is to fit regression models, and then a score model.
+
+#Model to predict salary
+#Feed it all of the training data
+#After training data, predict confidence intervals
+#Present confidence intervals in a plot.
+library(scales)
+
+#WR
+x = subset(df_wr, select = -c(Base.Salary))
+y = df_wr$Base.Salary
+x[is.na(x)] <- 0
+y[is.na(y)] <- 0
+library(glmnet)
+
+x_use = subset(x, select = -c(player_display_name))
+
+x_use <- as.matrix(x_use)
+y_use <- as.numeric(y)
+
+fit <- cv.glmnet(x_use, y_use, family = "gaussian")
+y_preds <- predict(fit, x_use, type = "response", s = fit$lambda.min)
+
+y_use <- as.vector(y_use)
+y_preds <- as.vector(y_preds)
+
+names = x$player_display_name
+
+library(ggplot2)
+# Basic scatter plot
+ggplot(mapping = aes(x=y_use, y=y_preds)) + geom_point() +  
+  scale_x_continuous(labels = comma) +  
+  scale_y_continuous(labels = comma) + 
+  ggtitle("WR Scatterplot")
+
+pay_disparity = y_preds - y_use
+
+perc_pay_disparity = (pay_disparity / y_preds) * 100
+
+ppcs <- sort(perc_pay_disparity, index.return=TRUE, decreasing=TRUE)
+
+top_10 = ppcs$ix[1:10]
+bot_10 = tail(ppcs$ix, n = 10)
+
+overpaid_wr <- names[top_10]
+
+underpaid_wr <- names[bot_10]
+
+coef <- coef(fit,s = fit$lambda.min, complete = TRUE)
+
+coef[coef[,1]!=0, ]
+
+sem_y_preds_wr <- sd(y_preds) / sqrt(length(y_preds))
+
+sem_y_preds_wr
+
+
+#HB
+x = subset(df_hb, select = -c(Base.Salary))
+y = df_hb$Base.Salary
+x[is.na(x)] <- 0
+y[is.na(y)] <- 0
+
+
+
+x_use = subset(x, select = -c(player_display_name))
+
+x_use <- as.matrix(x_use)
+y_use <- as.numeric(y)
+
+fit <- cv.glmnet(x_use, y_use, family = "gaussian")
+y_preds <- predict(fit, x_use, type = "response", s = fit$lambda.min)
+
+y_use <- as.vector(y_use)
+y_preds <- as.vector(y_preds)
+
+names = x$player_display_name
+
+# Basic scatter plot
+ggplot(mapping = aes(x=y_use, y=y_preds)) + geom_point() +  
+  scale_x_continuous(labels = comma) +  
+  scale_y_continuous(labels = comma) + 
+  ggtitle("HB Scatterplot")
+
+pay_disparity = y_preds - y_use
+
+perc_pay_disparity = (pay_disparity / y_preds) * 100
+
+ppcs <- sort(perc_pay_disparity, index.return=TRUE, decreasing=TRUE)
+
+top_10 = ppcs$ix[1:10]
+bot_10 = tail(ppcs$ix, n = 10)
+
+overpaid_hb <- names[top_10]
+
+underpaid_hb <- names[bot_10]
+coef <- coef(fit,s = fit$lambda.min, complete = TRUE)
+
+coef[coef[,1]!=0, ]
+
+sem_y_preds_hb <- sd(y_preds) / sqrt(length(y_preds))
+
+sem_y_preds_hb
+#TE
+x = subset(df_te, select = -c(Base.Salary))
+y = df_te$Base.Salary
+x[is.na(x)] <- 0
+y[is.na(y)] <- 0
+
+
+x_use = subset(x, select = -c(player_display_name))
+
+x_use <- as.matrix(x_use)
+y_use <- as.numeric(y)
+
+fit <- cv.glmnet(x_use, y_use, family = "gaussian")
+y_preds <- predict(fit, x_use, type = "response", s = fit$lambda.min)
+
+y_use <- as.vector(y_use)
+y_preds <- as.vector(y_preds)
+
+names = x$player_display_name
+
+sem_y_preds_te <- sd(y_preds) / sqrt(length(y_preds))
+
+sem_y_preds_te
+
+# Basic scatter plot
+ggplot(mapping = aes(x=y_use, y=y_preds)) + geom_point() +  
+  scale_x_continuous(labels = comma) +  
+  scale_y_continuous(labels = comma) + 
+  ggtitle("TE Scatterplot")
+
+pay_disparity = y_preds - y_use
+
+perc_pay_disparity = (pay_disparity / y_preds) * 100
+
+ppcs <- sort(perc_pay_disparity, index.return=TRUE, decreasing=TRUE)
+
+top_10 = ppcs$ix[1:10]
+bot_10 = tail(ppcs$ix, n = 10)
+
+overpaid_te <- names[top_10]
+
+underpaid_te <- names[bot_10]
+coef <- coef(fit,s = fit$lambda.min, complete = TRUE)
+
+coef[coef[,1]!=0, ]
+
+
+#QB
+x = subset(df_qb, select = -c(Base.Salary))
+y = df_qb$Base.Salary
+x[is.na(x)] <- 0
+y[is.na(y)] <- 0
+
+
+x_use = subset(x, select = -c(player_display_name))
+
+x_use <- as.matrix(x_use)
+y_use <- as.numeric(y)
+
+fit <- cv.glmnet(x_use, y_use, family = "gaussian")
+y_preds <- predict(fit, x_use, type = "response", s = fit$lambda.min)
+
+y_use <- as.vector(y_use)
+y_preds <- as.vector(y_preds)
+
+names = x$player_display_name
+
+# Basic scatter plot
+ggplot(mapping = aes(x=y_use, y=y_preds)) + geom_point() +  
+  scale_x_continuous(labels = comma) +  
+  scale_y_continuous(labels = comma) + 
+  ggtitle("QB Scatterplot")
+
+pay_disparity = y_preds - y_use
+
+perc_pay_disparity = (pay_disparity / y_preds) * 100
+
+ppcs <- sort(perc_pay_disparity, index.return=TRUE, decreasing=TRUE)
+
+top_10 = ppcs$ix[1:10]
+bot_10 = tail(ppcs$ix, n = 10)
+
+overpaid_qb <- names[top_10]
+
+underpaid_qb <- names[bot_10]
+coef <- coef(fit,s = fit$lambda.min, complete = TRUE)
+
+coef[coef[,1]!=0, ]
+sem_y_preds_qb <- sd(y_preds) / sqrt(length(y_preds))
+
+sem_y_preds_qb
+
+wr_table <- data.frame(rank=seq(1, 10, length.out = 10), 
+                Overpaid_WR = overpaid_wr,
+                Underpaid_WR = underpaid_wr) 
+
+hb_table <- data.frame(rank=seq(1, 10, length.out = 10), 
+                Overpaid_HB = overpaid_hb,
+                Underpaid_HB = underpaid_hb)
+qb_table <- data.frame(rank=seq(1, 10, length.out = 10), 
+                Overpaid_QB = overpaid_qb,
+                Underpaid_QB = underpaid_qb)
+te_table <- data.frame(rank=seq(1, 10, length.out = 10), 
+                Overpaid_TE = overpaid_te,
+                Underpaid_TE = underpaid_te) 
+wr_table
+
+```
+
+
+``` {r}
+hb_table
+```
+```{r}
+qb_table
+```
+
+```{r}
+te_table
+```
+
+```{r}
+
+data = data.frame(Position = character(), SEM = double())
+data[nrow(data) + 1,] = c("SEM WR",sem_y_preds_wr)
+data[nrow(data) + 1,] = c("SEM HB",sem_y_preds_hb)
+data[nrow(data) + 1,] = c("SEM TE",sem_y_preds_te)
+data[nrow(data) + 1,] = c("SEM QB",sem_y_preds_qb)
+
+data
+  
+```

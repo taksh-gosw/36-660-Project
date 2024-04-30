@@ -1,0 +1,348 @@
+---
+title: "project_hanyiw"
+output: pdf_document
+date: "2024-04-19"
+---
+
+```{r setup, include=FALSE}
+```
+
+
+```{r}
+library(nflverse)
+library(tidyverse)
+library(broom)
+library(glmnet)
+library(ggplot2)
+
+
+player_stats <- nflreadr::load_player_stats()
+player_stats
+
+qb_stats <- player_stats %>%
+  filter(position == "QB") %>%
+  group_by(player_name) %>%
+  summarize(average_completion = mean(completions, na.rm = TRUE),
+            average_passing_yards = mean(passing_yards, na.rm = TRUE))
+
+
+# Scatter plot of average touchdowns vs. passing yards
+ggplot(qb_stats, aes(x = average_passing_yards, y = average_completion, label = player_name)) +
+  geom_point(aes(color = average_completion), size = 3) +
+  geom_text(check_overlap = TRUE, hjust = 1.5, vjust = 1) +
+  labs(title = "Average Passing Yards vs.Average Completion for QBs",
+       x = "Average Passing Yards",
+       y = "Average Completion") +
+  theme_minimal() +
+  scale_color_gradient(low = "blue", high = "red")
+
+
+```
+
+```{r}
+
+rb_stats <- player_stats %>%
+  filter(position == "RB") %>%
+  group_by(player_name) %>%
+  summarize(average_rushing_yards = mean(rushing_yards, na.rm = TRUE),
+            total_touchdowns = sum(rushing_tds, na.rm = TRUE))
+
+# Create a histogram of average rushing yards
+ggplot(rb_stats, aes(x = average_rushing_yards)) +
+  geom_histogram(bins = 30, fill = "cornflowerblue", color = "black") +
+  labs(title = "Distribution of Average Rushing Yards for Running Backs",
+       x = "Average Rushing Yards",
+       y = "Frequency") +
+  theme_minimal()
+
+
+```
+
+
+```{r}
+ggplot(rb_stats, aes(x = average_rushing_yards, y = total_touchdowns,label = player_name)) +
+  geom_point(aes(color = total_touchdowns), size = 4, alpha = 0.6) +  
+  geom_text(check_overlap = TRUE, hjust = 1.5, vjust = 1) +
+  scale_color_gradient(low = "blue", high = "red") +  
+  labs(title = "Relationship Between Average Rushing Yards and Total Touchdowns for Running Backs",
+       x = "Average Rushing Yards",
+       y = "Total Touchdowns") +
+  theme_minimal() 
+```
+
+
+
+```{r}
+player_salary <- read.csv("data/salary_Proj.csv")
+player_stats <- nflreadr::load_player_stats()
+
+stats_across_weeks <- player_stats %>%
+  group_by(player_display_name) %>%
+  summarise(across(where(is.numeric), mean), 
+            position = first(position),
+            team = first(recent_team),
+            Player = first(player_display_name),
+            .groups = 'drop')
+
+inner_join_result <- inner_join(stats_across_weeks, player_salary, by = "Player")
+# Using table to see the frequency of each team
+
+
+pos_counts <- table(inner_join_result$Position)
+print(pos_counts)
+
+```
+
+
+
+
+
+
+
+```{r}
+# filter data for each position
+QB_data <- subset(inner_join_result, position == 'QB' )
+RB_data <- subset(inner_join_result, position == 'RB' )
+TE_data <- subset(inner_join_result, position == 'TE' )
+WR_data <- subset(inner_join_result, position == 'WR' )
+
+```
+
+
+```{r}
+# WR Preprocessing 
+
+# Drop non-related columns(Season,Position,Week,....), columns that is nan
+WR_data <- WR_data %>% 
+  select(-position,-season, -week, -Position, - Player)
+
+WR_data <- WR_data %>% 
+  select_if(~ !all(is.na(.)))
+
+WR_response <- WR_data  %>% 
+  select(Base.Salary)
+
+# Standardize each columns 
+library(scales)
+WR_data <- WR_data %>% 
+  mutate_if(is.numeric, scales::rescale)
+
+# Select data with enough variability to model
+WR_response <- WR_data %>%
+  select(carries, rushing_yards, rushing_tds, rushing_first_downs, receptions, targets, 
+         receiving_yards, receiving_tds, receiving_air_yards, receiving_yards_after_catch, 
+         receiving_first_downs, receiving_epa, racr, target_share, air_yards_share, wopr, 
+         fantasy_points, fantasy_points_ppr, Base.Salary) %>%
+  mutate(across(-Base.Salary, scale))
+WR_data$Base.Salary <- WR_response
+
+tibble(WR_data)
+# tibble(WR_response)
+
+```
+```{r}
+
+# Modeling: Team could be a fixed/random effect
+
+library(lme4)
+random_effects <- paste0("(", "1|", names(WR_data)[!names(WR_data) %in% c("team", "Base.Salary")], ")", collapse = "+")
+formula <- as.formula(paste("Base.Salary ~ team +", random_effects))
+
+
+
+# Fit the mixed-effects model
+model <- lmer(formula, data = WR_data)
+model <- lmer(Base.Salary ~ (1 | team ), data = WR_data, REML = TRUE )
+summary(model)
+
+
+```
+```{r}
+# Linear regression model to see the variation
+library(glmnet)
+
+lm_model <- lm(Base.Salary ~ carries + receptions +targets+receiving_yards+receiving_tds+receiving_air_yards+receiving_first_downs+receiving_epa+racr+target_share+air_yards_share+fantasy_points, data = WR_data)
+
+
+
+
+WR_data[is.na(WR_data)] <- 0
+
+x_matrix <- as.matrix(WR_data[, c("carries", "targets", "receiving_yards", "receiving_tds", 
+                       "receiving_air_yards", "receiving_first_downs", "receiving_epa", "racr", 
+                       "target_share", "air_yards_share", "fantasy_points")
+])  # Extract predictors and convert to matrix
+y_vector <- WR_data$Base.Salary
+cv_lasso <- cv.glmnet(x_matrix, y_vector, alpha = 1)
+coefficients <- coef(cv_lasso, s = "lambda.min")
+print(coefficients)
+
+optimal_lambda <- cv_lasso$lambda.min
+optimal_lambda_1se <- cv_lasso$lambda.1se
+
+cat("Optimal lambda (minimizes mean cross-validated error):", optimal_lambda, "\n")
+cat("Optimal lambda (one standard error rule):", optimal_lambda_1se, "\n")
+
+deviance_explained <- cv_lasso$cvm[cv_lasso$lambda == optimal_lambda]
+cat("Deviance explained by the model:", deviance_explained, "\n")
+
+```
+
+
+```{r}
+plot(cv_lasso)
+
+```
+
+
+```{r}
+deviance_explained <- cv_lasso$cvm[cv_lasso$lambda == optimal_lambda]
+cat("Deviance explained by the model:", deviance_explained, "\n")
+
+```
+
+
+```{r}
+predicted_salaries <- predict(cv_lasso, newx = x_matrix, s = "lambda.min")
+predicted_sd <- sd(predicted_salaries)
+
+```
+
+```{r}
+# Assuming original_salaries is correctly ordered and aligned with x_matrix
+original_salaries <- WR_data$Base.Salary  # Adjust column name as necessary
+# Calculate differences and standard deviations away from actual
+salary_diff <- original_salaries - predicted_salaries  
+std_devs_away <- salary_diff / predicted_sd
+salary_diff
+# Adding this info back to the original dataframe
+WR_data$predicted_salary <- predicted_salaries
+WR_data$salary_diff <- salary_diff
+WR_data$std_devs_away <- std_devs_away
+
+# Plotting
+library(ggplot2)
+ggplot(WR_data, aes(x = original_salaries, y = predicted_salary, color = std_devs_away,label = player_display_name)) +
+  geom_point() +
+  scale_color_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0) +
+  labs(title = "Player Salary Valuation",
+       x = "Original Salary",
+       y = "Predicted Salary",
+       color = "Std Devs from Actual") +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "black")  # Adds a y=x reference line
+
+```
+
+```{r}
+# Calculate the upper and lower bounds of the 1.5 SD band
+lower_bound <- predicted_salaries - 1.5 * predicted_sd
+upper_bound <- predicted_salaries + 1.5 * predicted_sd
+
+# Add these to the dataframe for plotting and analysis
+WR_data$lower_bound <- lower_bound
+WR_data$upper_bound <- upper_bound
+
+```
+
+```{r}
+
+ggplot(WR_data, aes(x = original_salaries, y = predicted_salary)) +
+  geom_point(aes(color = std_devs_away)) +
+  geom_line(aes(y = lower_bound), linetype = "dotted", color = "red") +
+  geom_line(aes(y = upper_bound), linetype = "dotted", color = "red") +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "black") +
+  scale_color_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0) +
+  labs(title = "Player Salary Valuation with 1.5 SD Band",
+       x = "Original Salary",
+       y = "Predicted Salary",
+       color = "Std Devs from Actual")
+```
+
+
+
+
+```{r}
+# Assuming predicted_salaries and predicted_sd have already been calculated
+WR_data$outlier <- with(WR_data, abs(original_salaries - predicted_salary) > predicted_sd)
+library(ggplot2)
+library(ggrepel)  # for better label placement
+if(!"player_display_name" %in% names(WR_data)) {
+  WR_data$player_display_name <- paste("Player", seq_along(WR_data$predicted_salary))  # Example names if not present
+}
+ggplot(WR_data, aes(x = predicted_salary, y = original_salaries)) +
+  geom_point(aes(color = outlier), alpha = 0.5) +  # Dim non-outliers
+  scale_color_manual(values = c("FALSE" = "grey", "TRUE" = "red")) +  # Highlight outliers
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "black") +  # Reference line y=x
+  { if(sum(WR_data$outlier) > 0) {  # Only add text if there are outliers
+      geom_text_repel(data = subset(WR_data, outlier), aes(label = player_display_name),
+                      point.padding = 0.5, size = 3, max.overlaps = 10)
+    }
+  } +
+  labs(title = "Player Salary Evaluation",
+       x = "Predicted Salary (Theoretical)",
+       y = "Actual Salary",
+       color = "Outlier (>|1 SD|)") +
+  theme_minimal()
+
+```
+
+
+```{r}
+outlier_data <- subset(WR_data, outlier)
+
+if(nrow(outlier_data) > 0) {
+  ggplot(WR_data, aes(x = predicted_salary, y = original_salaries)) +
+    geom_point(aes(color = outlier), alpha = 0.5) +  # Dim non-outliers
+    scale_color_manual(values = c("FALSE" = "grey", "TRUE" = "red")) +  # Highlight outliers
+    geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "black") +  # Reference line y=x
+    geom_text_repel(data = outlier_data, aes(label = player_display_name),
+                    point.padding = 0.5, size = 3, max.overlaps = 10) +
+    labs(title = "Player Salary Evaluation",
+         x = "Predicted Salary (Theoretical)",
+         y = "Actual Salary",
+         color = "Outlier (>|1 SD|)") +
+    theme_minimal()
+} else {
+  print("No outliers to display.")
+}
+```
+
+
+
+
+
+```{r}
+ggplot(WR_data, aes(x = Base.Salary, y = predicted_salaries,label = player_display_name)) +
+  geom_point(aes(color = std_devs_away), size = 4, alpha = 0.6) +  
+  geom_text(check_overlap = TRUE, hjust = 1.5, vjust = 1) +
+  scale_color_gradient(low = "blue", high = "red") +  
+  labs(title = "Salary vs. Theoretical Salary",
+       x = "Actual Salary",
+       y = "Theoretical Estimated Salary") +
+  theme_minimal() 
+```
+
+
+
+
+```{r}
+library(ggplot2)
+library(ggrepel)  # Ensure this package is installed
+
+ggplot(WR_data, aes(x = Base.Salary, y = predicted_salaries, label = player_display_name)) +
+  geom_point(aes(color = std_devs_away), size = 4, alpha = 0.6) +  
+  geom_text_repel(
+    aes(color = std_devs_away), 
+    size = 3.5, 
+    box.padding = 0.35, 
+    point.padding = 0.5, 
+    segment.color = 'grey50'
+  ) +
+  scale_color_gradient(low = "blue", high = "red") +
+  labs(title = "Salary vs. Theoretical Salary",
+       x = "Actual Salary",
+       y = "Theoretical Estimated Salary") +
+  theme_minimal() +
+  theme(legend.position = "right")  # Adjust legend position if needed
+
+```

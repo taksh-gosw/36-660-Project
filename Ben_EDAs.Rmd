@@ -1,0 +1,92 @@
+---
+title: "project preprocessing"
+author: "Takshsheel Goswami"
+date: "2024-04-23"
+output: pdf_document
+---
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r}
+library(tidyverse)
+salary_data = read.csv("salary_Proj.csv")
+nflverse_data = read.csv("nflverse.csv")
+
+names(salary_data)[1] <- "player_display_name"
+total <- merge(salary_data,nflverse_data,by="player_display_name")
+```
+
+```{r}
+
+total = subset(total, select = -c(player_name,player_id,X,Position,season_type,headshot_url,recent_team,season,season_type,opponent_team,week))
+
+library(dplyr)
+total <- total %>% 
+  group_by(player_display_name,position,position_group) %>%
+  summarise_all(mean)
+
+
+table(total$position_group)
+
+```
+
+```{r}
+data = read.csv("preprocessed_combined_mean.csv")
+data
+```
+
+```{r}
+
+merged_data_clean_QB <- data %>%
+  filter(data$position == "WR")%>%
+  select(Base.Salary, passing_yards, rushing_yards, receiving_yards,completions,attempts, passing_tds,interceptions, sacks,sack_yards,passing_air_yards,passing_yards_after_catch,passing_first_downs,passing_epa,passing_2pt_conversions,pacr,dakota,carries,rushing_yards,rushing_tds,rushing_fumbles,rushing_fumbles_lost,rushing_first_downs,rushing_epa,rushing_2pt_conversions,receptions) %>%
+  na.omit()
+
+
+model_QB <- lm(Base.Salary ~ ., data = as.data.frame(merged_data_clean_QB))
+summary(model_QB)
+merged_data
+
+```
+
+
+```{r}
+# Load the data
+data <- read.csv("preprocessed_combined_mean.csv")
+
+# Assuming 'Unnamed: 0' is a redundant index column that can be removed
+data <- data[, -1]
+
+# Ensure that 'position' is correctly typed as a factor (if not already)
+data$position <- as.factor(data$position)
+
+# Filter the data for only players whose position is 'QB'
+qb_data <- data[data$position == "QB", ]
+
+# Handling missing values - impute with mean for numeric columns in QB data
+numeric_columns <- sapply(qb_data, is.numeric)
+qb_data[, numeric_columns] <- lapply(qb_data[, numeric_columns], function(x) {
+  x[is.na(x)] <- mean(x, na.rm = TRUE)
+  x
+})
+
+# Re-check and adjust all factor variables after handling NAs
+factor_columns <- sapply(qb_data, is.factor)
+for (col in names(qb_data)[factor_columns]) {
+  if (length(unique(qb_data[[col]], na.rm = TRUE)) <= 1) {
+    qb_data[[col]] <- NULL  # Remove factor columns with only one level
+  }
+}
+
+# Ensure all remaining factor variables are properly factored, this may include dropping them if only one level is present
+qb_data <- qb_data[, sapply(qb_data, function(x) length(unique(x)) > 1)]
+
+# Build the linear model
+model <- lm(Base.Salary ~ ., data = qb_data)
+
+# Display the summary of the model
+summary(model)
+
+```
+
