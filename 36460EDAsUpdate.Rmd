@@ -1,0 +1,63 @@
+---
+title: "project preprocessing"
+author: "Takshsheel Goswami"
+date: "2024-04-23"
+output: pdf_document
+---
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r,warning=FALSE}
+library(tidyverse)
+salary_data = read.csv("salary_Proj.csv")
+nflverse_data = read.csv("nflverse.csv")
+
+names(salary_data)[1] <- "player_display_name"
+total <- merge(salary_data,nflverse_data,by="player_display_name")
+```
+
+```{r}
+
+total = subset(total, select = -c(player_name,player_id,X,Position,season_type,headshot_url,recent_team,season,season_type,opponent_team,week))
+
+library(dplyr)
+total <- total %>% 
+  group_by(player_display_name,position,position_group) %>%
+  summarise_all(mean)
+
+```
+
+```{r}
+data = read.csv("preprocessed_combined_mean.csv")
+```
+
+```{r}
+library(ggplot2)
+
+data_rb <- data[data$position == "RB", ]
+data_qb <- data[data$position == "QB", ]
+
+ggplot(data_rb, aes(x=rushing_yards)) +
+  geom_histogram(binwidth=10, fill="blue", color="black") +
+  labs(title="Distribution of Rushing Yards",
+       x="Rushing Yards",
+       y="Count") +
+  theme_minimal()
+
+ggplot(data_qb, aes(x=completions)) +
+  geom_histogram(binwidth=5, fill="green", color="black") +
+  labs(title="Distribution of Completions",
+       x="Completions",
+       y="Count") +
+  theme_minimal()
+
+ggplot(data_qb, aes(x=passing_yards)) +
+  geom_histogram(binwidth=15, fill="red", color="black") +
+  labs(title="Distribution of Passing Yards",
+       x="Passing Yards",
+       y="Count") +
+  theme_minimal()
+
+```
+
